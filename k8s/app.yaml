@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github-forks
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: github-forks-config
+  namespace: github-forks
+data:
+  QDRANT_URL: "http://qdrant-service:6333"
+  DATABASE_URL: "file:/data/forks.db"
+  NODE_ENV: "production"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-forks-secrets
+  namespace: github-forks
+type: Opaque
+stringData:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  QDRANT_API_KEY: "${QDRANT_API_KEY:-}"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forks-db-pvc
+  namespace: github-forks
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-forks-app
+  namespace: github-forks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-forks
+  template:
+    metadata:
+      labels:
+        app: github-forks
+    spec:
+      containers:
+      - name: app
+        image: github-forks:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: github-forks-config
+        - secretRef:
+            name: github-forks-secrets
+        volumeMounts:
+        - name: db-storage
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: db-storage
+        persistentVolumeClaim:
+          claimName: forks-db-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-forks-service
+  namespace: github-forks
+spec:
+  type: LoadBalancer
+  selector:
+    app: github-forks
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: github-forks-hpa
+  namespace: github-forks
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: github-forks-app
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
