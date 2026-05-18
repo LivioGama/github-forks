@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PlausibleProvider from "next-plausible";
 import Link from "next/link";
 import {
   SITE_DESCRIPTION,
@@ -9,6 +10,8 @@ import {
   getSiteUrl,
 } from "@/lib/site";
 import "./globals.css";
+
+const PLAUSIBLE_DOMAIN = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
 
 const siteUrl = getSiteUrl();
 
@@ -89,6 +92,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {PLAUSIBLE_DOMAIN && (
+          <PlausibleProvider
+            domain={PLAUSIBLE_DOMAIN}
+            trackOutboundLinks
+            taggedEvents
+            enabled={process.env.NODE_ENV === "production"}
+          />
+        )}
+      </head>
       <body className="min-h-screen bg-[#0d1117] text-[#c9d1d9]">
         <script
           type="application/ld+json"

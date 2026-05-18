@@ -1,3 +1,5 @@
+const { withPlausibleProxy } = require("next-plausible");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -16,4 +18,8 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+const plausibleHost = process.env.NEXT_PUBLIC_PLAUSIBLE_HOST;
+
+module.exports = plausibleHost
+  ? withPlausibleProxy({ customDomain: plausibleHost })(nextConfig)
+  : nextConfig;
