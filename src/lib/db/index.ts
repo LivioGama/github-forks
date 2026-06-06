@@ -3,11 +3,7 @@ import PocketBase from 'pocketbase';
 let cached: PocketBase | null = null;
 let initPromise: Promise<PocketBase> | null = null;
 
-async function initializeDb(): Promise<PocketBase> {
-  if (cached) return cached;
-
-  const pb = new PocketBase(process.env.POCKETBASE_URL || 'http://localhost:8090');
-
+async function authenticateSuperuser(pb: PocketBase): Promise<void> {
   const email = process.env.POCKETBASE_ADMIN_EMAIL;
   const password = process.env.POCKETBASE_ADMIN_PASSWORD;
 
@@ -21,6 +17,13 @@ async function initializeDb(): Promise<PocketBase> {
   } catch {
     await (pb as any).admins.authWithPassword(email, password);
   }
+}
+
+async function initializeDb(): Promise<PocketBase> {
+  if (cached) return cached;
+
+  const pb = new PocketBase(process.env.POCKETBASE_URL || 'http://localhost:8090');
+  await authenticateSuperuser(pb);
 
   cached = pb;
   return pb;
@@ -30,7 +33,27 @@ export async function getDb(): Promise<PocketBase> {
   if (!initPromise) {
     initPromise = initializeDb();
   }
-  return initPromise;
+
+  const pb = await initPromise;
+
+  // The superuser auth token has a TTL and is also invalidated when
+  // PocketBase restarts. A long-lived cached client eventually holds a
+  // stale token, after which every write fails with
+  // "Only superusers can perform this action". Re-authenticate whenever
+  // the stored token is no longer valid so callers always get a live
+  // superuser session.
+  if (!pb.authStore.isValid) {
+    try {
+      await authenticateSuperuser(pb);
+    } catch (err) {
+      // Drop the cache so the next call rebuilds from scratch.
+      cached = null;
+      initPromise = null;
+      throw err;
+    }
+  }
+
+  return pb;
 }
 
 // Lazy proxy — resolves the PocketBase instance on first property access.
