@@ -52,3 +52,7 @@ pocketbase-schema-export.json
 
 # local API scratch (never commit tokens)
 test-github-api.js
+
+# Vercel CLI local env artifacts (contains OIDC token)
+.env.neon
+.env.neon.preview

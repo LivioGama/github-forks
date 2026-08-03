@@ -1,4 +1,5 @@
 import PocketBase from "pocketbase";
+import { PostgresDB } from "./postgres";
 
 /** Large enough for Gemini Markdown; PocketBase default text max is often 5000 — must be raised. */
 const DEEP_SUMMARY_MAX = 500_000;
@@ -43,8 +44,16 @@ function optionalJsonField(name: string) {
  * Also **raises** an existing `deepSummary` text field max if it is below `DEEP_SUMMARY_MAX`
  * (common failure: PB default 5000-char limit).
  * Returns true if the collection schema was updated (caller may retry the write).
+ *
+ * When running against Postgres (Neon), the schema is created up front by the
+ * migration script — there is nothing to ensure, so this returns false.
  */
-export async function ensureForksGeminiFields(pb: PocketBase): Promise<boolean> {
+export async function ensureForksGeminiFields(
+  pb: PocketBase | PostgresDB
+): Promise<boolean> {
+  if (pb instanceof PostgresDB) {
+    return false;
+  }
   const col = await pb.collections.getFirstListItem<Record<string, unknown>>(
     'name = "forks"'
   );

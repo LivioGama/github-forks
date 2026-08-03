@@ -100,7 +100,8 @@ program
         console.log(
           "owner,repo,stars,ahead_by,files_changed,score,summary"
         );
-        forks.forEach((fork: any) => {
+        const items = Array.isArray(forks) ? forks : (forks as any).items || [];
+        items.forEach((fork: any) => {
           console.log(
             `${fork.owner},${fork.repo},${fork.stars},${fork.aheadBy},${fork.filesChanged},${fork.score},"${fork.summary}"`
           );
