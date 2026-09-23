@@ -53,8 +53,30 @@ export function getOctokit(userToken?: string): Octokit {
   return defaultOctokit;
 }
 
+let sharedQueue: PQueue | null = null;
+
+// One queue per instance: GitHub calls AND PocketBase writes share the same
+// concurrency budget. Overlapping scans (or scan stages) on one instance can
+// therefore never exceed `concurrency` combined requests — separate per-worker
+// queues let N scans fan out to N*20 sockets (EMFILE + GitHub secondary rate
+// limits).
 export function createQueue(): PQueue {
-  return new PQueue(QUEUE_OPTIONS);
+  if (!sharedQueue) sharedQueue = new PQueue(QUEUE_OPTIONS);
+  return sharedQueue;
+}
+
+// GitHub returns 403 — not 429 — for both primary rate-limit exhaustion
+// (x-ratelimit-remaining: 0) and secondary/abuse limits (retry-after header).
+// Both are transient and must be retried, not thrown.
+function isRateLimited(status: number | undefined, headers: Record<string, string>): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  return headers["x-ratelimit-remaining"] === "0" || headers["retry-after"] !== undefined;
+}
+
+export function errorIsRateLimited(error: unknown): boolean {
+  const { status, response } = error as HttpError;
+  return isRateLimited(status, response?.headers ?? {});
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -107,13 +129,22 @@ export async function withRateLimit<T>(
       if (error instanceof TimeoutError) throw error;
 
       const { status, response } = error as HttpError;
-      if (status !== undefined && status >= 400 && status !== 429) throw error;
+      const headers = response?.headers ?? {};
+      if (status !== undefined && status >= 400 && !isRateLimited(status, headers)) throw error;
 
       if (attempt < opts.maxRetries) {
-        const retryAfter = response?.headers?.["retry-after"];
-        const delay = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : opts.delayMs * Math.pow(opts.backoffMultiplier, attempt);
+        const retryAfter = headers["retry-after"];
+        const reset = headers["x-ratelimit-reset"];
+        let delay: number;
+        if (retryAfter) {
+          delay = parseInt(retryAfter, 10) * 1000;
+        } else if (headers["x-ratelimit-remaining"] === "0" && reset) {
+          // Primary limit exhausted: wait until the reset window, capped so a
+          // scan can't sleep past the function's maxDuration.
+          delay = Math.min(Math.max(parseInt(reset, 10) * 1000 - Date.now(), 0), 90_000);
+        } else {
+          delay = opts.delayMs * Math.pow(opts.backoffMultiplier, attempt);
+        }
         await sleep(delay);
       }
     }

@@ -56,7 +56,7 @@ if [ ! -f "$ENV_FILE" ]; then
 GITHUB_TOKEN=$GITHUB_TOKEN
 OPENAI_API_KEY=$OPENAI_API_KEY
 GEMINI_API_KEY=$GEMINI_API_KEY
-POCKETBASE_URL=http://pocketbase:8090
+POCKETBASE_URL=https://forks-github-pocketbase.liviogama.com
 POCKETBASE_ADMIN_EMAIL=$POCKETBASE_ADMIN_EMAIL
 POCKETBASE_ADMIN_PASSWORD=$POCKETBASE_ADMIN_PASSWORD
 NODE_ENV=production
@@ -110,11 +110,11 @@ echo "Next steps:"
 echo "  1. Open dokploy dashboard"
 echo "  2. Go to project: $PROJECT"
 echo "  3. Find compose service: $STACK (ID: $COMPOSE_ID)"
-echo "  4. Configure domain: forks-github-pocketbase.devliv.io (port 8090)"
+echo "  4. Configure domain: forks-github-pocketbase.liviogama.com (port 8090)"
 echo "  5. Check logs: ${DOKPLOY[*]} compose read-logs $COMPOSE_ID"
-echo "  6. Access PocketBase admin: https://forks-github-pocketbase.devliv.io/_/"
+echo "  6. Access PocketBase admin: https://forks-github-pocketbase.liviogama.com/_/"
 echo "  2. Go to project: $PROJECT"
 echo "  3. Find compose service: $STACK (ID: $COMPOSE_ID)"
-echo "  4. Configure domain: forks-github-pocketbase.devliv.io (port 8090)"
+echo "  4. Configure domain: forks-github-pocketbase.liviogama.com (port 8090)"
 echo "  5. Check logs: ${DOKPLOY[*]} compose read-logs $COMPOSE_ID"
-echo "  6. Access PocketBase admin: https://forks-github-pocketbase.devliv.io/_/"
+echo "  6. Access PocketBase admin: https://forks-github-pocketbase.liviogama.com/_/"

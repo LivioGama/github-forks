@@ -38,8 +38,17 @@ export async function POST(request: NextRequest) {
       const database = await getDb();
       
       if (!force) {
+        // Reuse a completed scan OR one still running (<10min old — a stale
+        // "running" row from a killed invocation must not block rescans).
+        // Without this, concurrent POSTs each spawn a full pipeline: double
+        // the GitHub calls against the same token and duplicate work.
+        // PB date filters silently match nothing on ISO "T" format — must be
+        // "YYYY-MM-DD HH:MM:SS.sssZ" (verified against the live instance).
+        const runningCutoff = new Date(Date.now() - 10 * 60 * 1000)
+          .toISOString()
+          .replace("T", " ");
         const existingScans = await database.collection('scans').getList(1, 1, {
-          filter: `owner = "${owner}" && repo = "${repo}" && status = "completed"`,
+          filter: `owner = "${owner}" && repo = "${repo}" && (status = "completed" || ((status = "running" || status = "pending") && startedAt > "${runningCutoff}"))`,
           sort: '-startedAt',
         });
 

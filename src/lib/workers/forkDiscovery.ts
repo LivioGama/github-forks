@@ -64,9 +64,10 @@ export async function forkDiscoveryWorker(
       processedForks: 0,
     }, PB_NO_CANCEL);
 
-    // Store forks in parallel (all are new since we have a fresh scanId)
-    await Promise.all(
-      forks.map((fork) =>
+    // Store forks — writes go through the queue so 1000 forks don't fire
+    // 1000 simultaneous PocketBase requests (socket exhaustion → EMFILE).
+    await queue.addAll(
+      forks.map((fork) => () =>
         database.collection('forks').create({
           scanId,
           owner: fork.owner,

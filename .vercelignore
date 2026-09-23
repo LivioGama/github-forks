@@ -1,0 +1,11 @@
+# Local env files contain real secrets (POSTGRES_URL, API keys) — vercel deploy
+# uploads everything not listed here (it does NOT honor .gitignore). Next.js
+# loads .env.local even in production, which silently overrides project env vars.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+.env.neon
+.env.neon.preview

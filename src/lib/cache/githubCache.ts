@@ -1,13 +1,22 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = path.join(__dirname, '../../../.cache/github');
+// /var/task is read-only on Vercel — only os.tmpdir() is writable there.
+const CACHE_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'github-forks-cache')
+  : path.join(__dirname, '../../../.cache/github');
 
-// Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
+let cacheDirReady = false;
+
+// Lazily ensure the cache directory — no fs side effects at module eval,
+// which crashes serverless cold starts before the route can respond.
+function ensureCacheDir(): void {
+  if (cacheDirReady) return;
   fs.mkdirSync(CACHE_DIR, { recursive: true });
+  cacheDirReady = true;
 }
 
 interface CacheEntry {
@@ -62,6 +71,7 @@ export async function set<T>(endpoint: string, data: T, params: Record<string, u
   };
 
   try {
+    ensureCacheDir();
     fs.writeFileSync(cachePath, JSON.stringify(entry), 'utf-8');
   } catch (error) {
     // If cache write fails, ignore
@@ -73,8 +83,9 @@ export function clear(): void {
   try {
     if (fs.existsSync(CACHE_DIR)) {
       fs.rmSync(CACHE_DIR, { recursive: true, force: true });
-      fs.mkdirSync(CACHE_DIR, { recursive: true });
+      cacheDirReady = false;
     }
+    ensureCacheDir();
   } catch (error) {
     console.error('Failed to clear cache:', error);
   }

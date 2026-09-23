@@ -103,22 +103,28 @@ export async function rankingWorker(scanId: string): Promise<void> {
         continue;
       }
 
-      const recencyDays = fork.updatedAt
-        ? (now - new Date(fork.updatedAt).getTime()) / MS_PER_DAY
-        : RECENCY_DAYS_HORIZON;
+      if ((fork.aheadBy ?? 0) > 0) {
+        const recencyDays = fork.updatedAt
+          ? (now - new Date(fork.updatedAt).getTime()) / MS_PER_DAY
+          : RECENCY_DAYS_HORIZON;
 
-      const score = computeScore({
-        aheadBy: fork.aheadBy ?? 0,
-        linesChanged: (fork.linesAdded ?? 0) + (fork.linesRemoved ?? 0),
-        recencyDays,
-        stars: fork.stars ?? 0,
-      });
+        const score = computeScore({
+          aheadBy: fork.aheadBy ?? 0,
+          linesChanged: (fork.linesAdded ?? 0) + (fork.linesRemoved ?? 0),
+          recencyDays,
+          stars: fork.stars ?? 0,
+        });
 
-      await database.collection('forks').update(fork.id, {
-        score,
-        summary: summarizeFork(fork),
-        stage: "ranking",
-      }, PB_NO_CANCEL);
+        // Only ahead forks are scored/written — they are the only rows any
+        // consumer reads (API filters aheadBy > 0). Stage stays at
+        // diff_extraction for non-ahead forks, which the rescan skip lists
+        // already treat as processed.
+        await database.collection('forks').update(fork.id, {
+          score,
+          summary: summarizeFork(fork),
+          stage: "ranking",
+        }, PB_NO_CANCEL);
+      }
 
       updateJobProgress(scanId, {
         jobId: scanId,

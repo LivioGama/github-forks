@@ -21,14 +21,16 @@ const idField = () => ({
   autogeneratePattern: '[a-z0-9]{15}',
 });
 
-const text = (name: string, opts: { required?: boolean; presentable?: boolean } = {}) => ({
+const text = (name: string, opts: { required?: boolean; presentable?: boolean; max?: number } = {}) => ({
   name,
   type: 'text',
   required: !!opts.required,
   presentable: !!opts.presentable,
   hidden: false,
   min: 0,
-  max: 0,
+  // max:0 reports as "unlimited" but PB's text validator still defaults to
+  // 5000 chars — set an explicit max for fields that hold real content.
+  max: opts.max ?? 0,
   pattern: '',
 });
 
@@ -167,6 +169,7 @@ async function importFullSchema() {
         json('topFiles'),
         json('commitsJson'),
         number('semanticScore', { default: 0 }),
+        { name: 'untouched', type: 'bool', required: false, hidden: false },
         select('stage', ['discovery', 'diff_extraction', 'semantic_indexing', 'ranking', 'completed'], {
           required: true,
           default: 'discovery',
@@ -184,7 +187,7 @@ async function importFullSchema() {
       fields: [
         idField(),
         relation('forkId', forks.id, { required: true }),
-        text('patch'),
+        text('patch', { max: 60000 }),
         json('topFiles'),
         number('commitsCount', { default: 0 }),
         select('status', ['extracted', 'failed', 'not_found'], {

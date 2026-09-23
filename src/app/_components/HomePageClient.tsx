@@ -203,7 +203,7 @@ export function HomePageClient() {
         <p className="text-sm text-[#c9d1d9] mb-4 p-3 rounded-md border border-[#30363d] bg-[#161b22]">
           <span className="font-medium text-[#58a6ff]">Tip:</span> On GitHub, replace{" "}
           <code className="text-[#79c0ff] bg-[#0d1117] px-1 rounded">github.com</code> with{" "}
-          <code className="text-[#79c0ff] bg-[#0d1117] px-1 rounded">forks-github.devliv.io</code>{" "}
+          <code className="text-[#79c0ff] bg-[#0d1117] px-1 rounded">forks-github.liviogama.com</code>{" "}
           in the address bar (keep{" "}
           <code className="text-[#79c0ff] bg-[#0d1117] px-1 rounded">/owner/repo</code>)—then paste the repo
           below or start a scan from here.

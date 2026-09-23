@@ -1,5 +1,5 @@
 /** Canonical public URL for SEO (metadataBase, sitemap, robots, JSON-LD). */
-const DEFAULT_SITE_URL = "https://forks-github.devliv.io";
+const DEFAULT_SITE_URL = "https://forks-github.liviogama.com";
 
 export function getSiteUrl(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();

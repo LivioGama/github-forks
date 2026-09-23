@@ -56,3 +56,4 @@ test-github-api.js
 # Vercel CLI local env artifacts (contains OIDC token)
 .env.neon
 .env.neon.preview
+.pixel/

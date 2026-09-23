@@ -9,7 +9,7 @@ Scan every fork of any GitHub repository and ask the diffs questions like:
 
 Each fork's diff gets analyzed and returns `{ matches, reasoning }` grounded in actual code changes.
 
-**Quick jump from GitHub:** On any repository page, replace `github.com` in your browser’s address bar with `forks-github.devliv.io` and keep the rest of the URL (`/owner/repo` and beyond). You land here ready to scan that repo’s forks.
+**Quick jump from GitHub:** On any repository page, replace `github.com` in your browser’s address bar with `forks-github.liviogama.com` and keep the rest of the URL (`/owner/repo` and beyond). You land here ready to scan that repo’s forks.
 
 ## ✨ Features
 
@@ -107,7 +107,7 @@ MIT License — Use freely, modify as needed, contribute back if you can!
 
 **Made with ❤️ for developers**
 
-Live at **[forks-github.devliv.io](https://forks-github.devliv.io)**
+Live at **[forks-github.liviogama.com](https://forks-github.liviogama.com)**
 
 [⭐ Star this repo](../../) if it helps you!
 

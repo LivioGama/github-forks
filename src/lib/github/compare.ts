@@ -48,21 +48,27 @@ async function fetchCompareCommits(
   forkOwner: string,
   forkRepo: string,
   queue: PQueue,
-  githubToken?: string
+  githubToken?: string,
+  knownForkBranch?: string
 ): Promise<CompareData | null> {
   const octokit = getOctokit(githubToken);
 
   try {
-    const forkInfo = await withRateLimit(
-      () =>
-        octokit.repos.get({
-          owner: forkOwner,
-          repo: forkRepo,
-        }),
-      queue,
-      { cacheKey: `repo:${forkOwner}/${forkRepo}`, cacheTTL: 3600000 }
-    );
-    const actualForkBranch = forkInfo.data.default_branch;
+    // defaultBranch already comes free from listForks during discovery —
+    // only spend a repos.get call when the caller doesn't have it.
+    const actualForkBranch =
+      knownForkBranch ??
+      (
+        (await withRateLimit(
+          () =>
+            octokit.repos.get({
+              owner: forkOwner,
+              repo: forkRepo,
+            }),
+          queue,
+          { cacheKey: `repo:${forkOwner}/${forkRepo}`, cacheTTL: 3600000 }
+        )) as { data: { default_branch?: string } }
+      ).data.default_branch;
 
     const cacheKey = `compare:${upstreamOwner}/${upstreamRepo}:${upstreamBranch}:${forkOwner}:${actualForkBranch}`;
     const response = await withRateLimit(
@@ -91,7 +97,8 @@ export async function compareForkWithUpstream(
   forkOwner: string,
   forkRepo: string,
   queue: PQueue,
-  githubToken?: string
+  githubToken?: string,
+  knownForkBranch?: string
 ): Promise<{ aheadBy: number; files: FileChange[] } | null> {
   const data = await fetchCompareCommits(
     upstreamOwner,
@@ -100,7 +107,8 @@ export async function compareForkWithUpstream(
     forkOwner,
     forkRepo,
     queue,
-    githubToken
+    githubToken,
+    knownForkBranch
   );
   if (!data) return null;
 
@@ -120,7 +128,8 @@ export async function getCommitsDiff(
   forkOwner: string,
   forkRepo: string,
   queue: PQueue,
-  githubToken?: string
+  githubToken?: string,
+  knownForkBranch?: string
 ): Promise<{ patch: string; commits: CommitMetadata[] } | null> {
   const data = await fetchCompareCommits(
     upstreamOwner,
@@ -129,7 +138,8 @@ export async function getCommitsDiff(
     forkOwner,
     forkRepo,
     queue,
-    githubToken
+    githubToken,
+    knownForkBranch
   );
   if (!data) return null;
 
@@ -156,6 +166,75 @@ export async function getCommitsDiff(
 
   const patch = truncated ? patchParts.join("") + "\n... (truncated)" : patchParts.join("");
   return { patch, commits };
+}
+
+interface GqlCompareResponse {
+  data?: { repository?: { ref?: Record<string, { aheadBy?: number } | null> | null } | null };
+  errors?: { type?: string; message?: string }[];
+}
+
+const GQL_BATCH_SIZE = 50;
+
+// Batched ahead/behind check via GraphQL: ~50 forks per request at ~1 rate
+// point, and GraphQL quota is a separate pool from REST core. This replaces
+// per-fork `repos.get` + `compareCommits` REST calls for the aheadBy filter —
+// the single biggest cost of a scan. aheadBy semantics verified identical to
+// the REST compare endpoint (cross-repo `owner:branch` head refs supported).
+// Returns null for forks whose head ref can't be resolved (deleted/renamed).
+export async function batchAheadBy(
+  upstreamOwner: string,
+  upstreamRepo: string,
+  upstreamBranch: string,
+  forks: { owner: string; branch: string }[],
+  queue: PQueue,
+  githubToken?: string
+): Promise<(number | null)[]> {
+  const octokit = getOctokit(githubToken);
+  const results: (number | null)[] = new Array(forks.length).fill(null);
+  // headRef is inlined — keep out chars that would break the query string.
+  const safe = (s: string) => /^[A-Za-z0-9._/-]+$/.test(s);
+
+  for (let i = 0; i < forks.length; i += GQL_BATCH_SIZE) {
+    const chunk = forks.slice(i, i + GQL_BATCH_SIZE);
+    const compares = chunk
+      .map((f, j) =>
+        safe(f.owner) && safe(f.branch)
+          ? `f${j}: compare(headRef: "${f.owner}:${f.branch}") { aheadBy }`
+          : `f${j}: compare(headRef: "x:x") { aheadBy }`
+      )
+      .join("\n");
+
+    const gql = await withRateLimit(async () => {
+      const resp = await octokit.request("POST /graphql", {
+        data: {
+          query: `query { repository(owner: "${upstreamOwner}", name: "${upstreamRepo}") { ref(qualifiedName: "${upstreamBranch}") {\n${compares}\n} } }`,
+        },
+      });
+      const g = resp.data as GqlCompareResponse;
+      // Per-alias NOT_FOUNDs are tolerated (null aheadBy). Anything else —
+      // RATE_LIMITED, FORBIDDEN, INTERNAL — fails the batch. RATE_LIMITED gets
+      // retry-after markers so withRateLimit backs off; the rest retry as
+      // generic failures.
+      const fatal = (g.errors ?? []).find((e) => e.type && e.type !== "NOT_FOUND");
+      if (fatal) {
+        throw Object.assign(new Error(`GraphQL ${fatal.type}: ${fatal.message}`), {
+          status: fatal.type === "RATE_LIMITED" ? 403 : undefined,
+          response:
+            fatal.type === "RATE_LIMITED" ? { headers: { "retry-after": "30" } } : undefined,
+        });
+      }
+      return g;
+    }, queue);
+
+    const repo = gql.data?.repository;
+    if (!repo) throw new Error(`GraphQL: upstream repository ${upstreamOwner}/${upstreamRepo} not found`);
+    if (!repo.ref) throw new Error(`GraphQL: upstream branch "${upstreamBranch}" not found`);
+
+    chunk.forEach((_, j) => {
+      results[i + j] = repo.ref?.[`f${j}`]?.aheadBy ?? null;
+    });
+  }
+  return results;
 }
 
 export function analyzeFileChanges(files: FileChange[]): TopFile[] {
