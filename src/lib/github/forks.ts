@@ -89,6 +89,10 @@ export async function fetchAllForks(
   }`;
 
   const collected: { fork: GqlForkNode; score: number }[] = [];
+  // GitHub's forks connection can return the same nameWithOwner twice
+  // (renamed repos / network entries). Dedupe or every later stage and the
+  // results UI sees duplicate rows.
+  const seen = new Set<string>();
   let cursor: string | null = null;
   let totalRaw = 0;
   let upstreamDefaultBranch = "main";
@@ -120,7 +124,10 @@ export async function fetchAllForks(
     if (!conn) throw new Error(`No forks data for ${owner}/${repo}`);
     totalRaw = conn.totalCount ?? totalRaw;
 
-    const nodes = (conn.nodes ?? []).filter((n): n is GqlForkNode => !!n && !n.isPrivate);
+    const nodes = (conn.nodes ?? []).filter(
+      (n): n is GqlForkNode =>
+        !!n && !n.isPrivate && !!n.nameWithOwner && !seen.has(n.nameWithOwner) && !!seen.add(n.nameWithOwner)
+    );
     for (const fork of nodes) {
       const pushedMs = fork.pushedAt ? new Date(fork.pushedAt).getTime() : 0;
       const recencyScore = Math.max(0, 1 - (now - pushedMs) / ONE_YEAR_MS);
